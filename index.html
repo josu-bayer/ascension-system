@@ -421,9 +421,6 @@
     initializeFirestore, doc, getDoc, setDoc, deleteDoc, collection, query, where, getDocs,
     addDoc, onSnapshot, orderBy, limit, serverTimestamp
   } from "https://www.gstatic.com/firebasejs/12.17.0/firebase-firestore.js";
-  import {
-    getFunctions, httpsCallable
-  } from "https://www.gstatic.com/firebasejs/12.17.0/firebase-functions.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyBH_7qOpJur2pnZKfD-NTcijGhmUKCvldM",
@@ -437,15 +434,12 @@
   const fbApp = initializeApp(firebaseConfig);
   const auth = getAuth(fbApp);
   const db = initializeFirestore(fbApp, { ignoreUndefinedProperties: true });
-  const fns = getFunctions(fbApp);
-  const resolveLoginEmailFn = httpsCallable(fns, 'resolveLoginEmail');
 
   window.fb = {
     auth, db,
     createUserWithEmailAndPassword, signInWithEmailAndPassword,
     onAuthStateChanged, signOut, sendPasswordResetEmail, updatePassword, verifyBeforeUpdateEmail,
     reauthenticateWithCredential, EmailAuthProvider, sendEmailVerification,
-    resolveLoginEmail: (username) => resolveLoginEmailFn({ username }),
     doc, getDoc, setDoc, deleteDoc, collection, query, where, getDocs,
     addDoc, onSnapshot, orderBy, limit, serverTimestamp
   };
@@ -994,16 +988,12 @@ async function doLogin(){
   const u = (document.getElementById('auth-user').value||'').trim();
   const p = document.getElementById('auth-pass').value||'';
   if(!u||!p){ toast('Missing data','Enter your email/username and password.'); return; }
-  let email = looksLikeEmail(u) ? u.toLowerCase() : deriveEmail(u.toLowerCase());
-  if(!looksLikeEmail(u)){
-    // Plain username - ask the backend what email currently signs it in (handles both
-    // never-migrated accounts and ones that have since verified a real email), falling
-    // back to the old synthetic pattern if that lookup is ever unreachable.
-    try{
-      const res = await window.fb.resolveLoginEmail(u.toLowerCase());
-      if(res && res.data && res.data.email) email = res.data.email;
-    }catch(e){}
-  }
+  // Plain username always tries the old synthetic address. That only resolves for accounts
+  // that haven't verified a real email yet - once one does, it must log in with that email
+  // from then on (Firebase only allows one primary email per account, and looking up "what's
+  // this username's current email" safely would need a paid backend function, which this
+  // project intentionally doesn't have).
+  const email = looksLikeEmail(u) ? u.toLowerCase() : deriveEmail(u.toLowerCase());
   try{
     await window.fb.signInWithEmailAndPassword(window.fb.auth, email, p);
   }catch(err){
@@ -2126,6 +2116,7 @@ function render(){
         const synthetic = isSyntheticEmail(curEmail);
         return synthetic ? `
         <div class="penalty" style="margin-bottom:12px">⚠ No real email attached - you cannot recover your password if you forget it.</div>
+        <p class="note" style="margin-bottom:10px">One-way heads up: once you verify an email, this account switches to logging in with that email only - your username will no longer work to log in (it still shows everywhere else, this only affects the login screen).</p>
         ${emailVerificationSentTo ? `<p class="note" style="margin-bottom:10px">Verification email sent to <b style="color:var(--cyan-soft)">${esc(emailVerificationSentTo)}</b> - click the link in it to finish. Check your spam folder if it doesn't show up soon. Didn't get it at all? You can send it again below.</p>` : ''}
         <label>Add your email</label>
         <input id="newEmail" type="email" placeholder="you@example.com" autocapitalize="none" ${viewOnly?'disabled':''}>
